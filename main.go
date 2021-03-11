@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"log"
 	"os"
 	"os/exec"
@@ -12,7 +11,7 @@ import (
 )
 
 func main() {
-	fmt.Println("Chief Executable starting...")
+	log.Println("Chief Executable starting...")
 	signals := make(chan os.Signal, 1)
 	signal.Notify(signals, syscall.SIGINT, syscall.SIGTERM)
 
@@ -23,18 +22,19 @@ func main() {
 
 	time.Sleep(5 * time.Second)
 	interruptProgrammatically("event", team)
-
-	fmt.Println("Signal has been caught:", <-signals)
-
+	//main goroutine is blocked until system event happens
+	log.Println("Signal has been caught:", <-signals)
+	//sending message into each Done channel
 	shutdownTeam(team)
-
+	//blocked until all shutdown actions happen
 	wgDoneAll.Wait()
-	fmt.Println("Chief Executable completed.")
+	log.Println("Chief Executable completed.")
 }
 
 type Microservice struct {
 	ShutdownWaitGroup *sync.WaitGroup
 	Name              string
+	Args              []string
 	Command           *exec.Cmd
 	Shutdown          chan bool
 }
@@ -43,6 +43,8 @@ func (m *Microservice) Init(wgDone *sync.WaitGroup, name string, args ...string)
 	m.ShutdownWaitGroup = wgDone
 	m.ShutdownWaitGroup.Add(1)
 	m.Name = name
+	m.Args = make([]string, len(args))
+	m.Args = append(m.Args, args...)
 	m.Command = exec.Command(m.Name, args...)
 	m.Command.Stdout = os.Stdout
 	m.Shutdown = make(chan bool, 1)
@@ -58,7 +60,7 @@ func (m *Microservice) Run() {
 		defer m.ShutdownWaitGroup.Done()
 		<-m.Shutdown
 		//graceful shutdown actions
-		fmt.Println("Shutting down: ", m)
+		log.Println("Shutting down:", m.Name, m.Args)
 	}()
 }
 
@@ -72,8 +74,8 @@ func prepareTeam(wgDone *sync.WaitGroup, team map[string]*Microservice) {
 }
 
 func runTeam(team map[string]*Microservice) {
-	for key, value := range team {
-		fmt.Println("Starting:", key)
+	for _, value := range team {
+		log.Println("Starting:", value.Name, value.Args)
 		value.Run()
 	}
 }
